@@ -5,6 +5,8 @@ from PyQt6.QtGui import QFont, QPalette, QColor, QKeyEvent
 
 from ..core.timer_engine import TimerEngine, TimerState
 from ..core.formatting import format_time
+from ..core.scramble.generator import generate_scramble
+from .scramble_bar import ScrambleBar
 
 
 class MainWindow(QMainWindow):
@@ -13,8 +15,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self._engine = TimerEngine()
+        self._current_puzzle = "333"  # Fixed puzzle for Phase 2
+        self._current_scramble = ""
         self._init_ui()
         self._start_update_timer()
+        self._generate_new_scramble()
     
     def _init_ui(self):
         """Initialize user interface."""
@@ -32,6 +37,11 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
+        
+        # Scramble bar at the top
+        self._scramble_bar = ScrambleBar()
+        self._scramble_bar.new_requested.connect(self._on_new_scramble_requested)
+        layout.addWidget(self._scramble_bar)
         
         # Timer label
         self._time_label = QLabel("0.00")
@@ -82,6 +92,15 @@ class MainWindow(QMainWindow):
         palette.setColor(QPalette.ColorRole.WindowText, color)
         self._time_label.setPalette(palette)
     
+    def _generate_new_scramble(self):
+        """Generate a new scramble for the current puzzle."""
+        self._current_scramble = generate_scramble(self._current_puzzle)
+        self._scramble_bar.set_scramble(self._current_scramble)
+    
+    def _on_new_scramble_requested(self):
+        """Handle request for new scramble from scramble bar."""
+        self._generate_new_scramble()
+    
     def keyPressEvent(self, event: QKeyEvent):
         """Handle key press events."""
         # Ignore auto-repeat events
@@ -91,12 +110,20 @@ class MainWindow(QMainWindow):
         key = event.key()
         
         if key == Qt.Key.Key_Space:
+            # Check if we just stopped the timer
+            was_running = self._engine.state == TimerState.RUNNING
             self._engine.on_space_press()
+            
+            # If we just stopped, generate new scramble for next solve
+            if was_running and self._engine.state == TimerState.STOPPED:
+                self._generate_new_scramble()
         elif key == Qt.Key.Key_Escape:
             self._engine.reset()
         elif self._engine.state == TimerState.RUNNING:
             # Any other key during RUNNING stops the timer
             self._engine.on_other_key_press()
+            # Generate new scramble for next solve
+            self._generate_new_scramble()
         
         self._update_display()
     
